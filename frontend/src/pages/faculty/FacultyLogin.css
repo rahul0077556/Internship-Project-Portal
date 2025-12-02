@@ -1,0 +1,168 @@
+.faculty-login-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(circle at 20% 20%, rgba(91, 33, 182, 0.18), transparent 40%),
+    radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.15), transparent 35%),
+    #050810;
+}
+
+.faculty-login-backdrop .orb {
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.7;
+}
+
+.faculty-login-backdrop .orb-one {
+  background: rgba(91, 33, 182, 0.6);
+  top: 10%;
+  left: 10%;
+}
+
+.faculty-login-backdrop .orb-two {
+  background: rgba(14, 165, 233, 0.5);
+  bottom: 5%;
+  right: 15%;
+}
+
+.faculty-login-card {
+  width: min(460px, 90vw);
+  background: rgba(7, 11, 24, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+  border-radius: 24px;
+  padding: 2rem;
+  color: #f8fafc;
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 25px 80px rgba(5, 8, 16, 0.65);
+}
+
+.faculty-login-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.faculty-login-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.faculty-login-header p {
+  margin: 0.15rem 0 0;
+  color: rgba(248, 250, 252, 0.7);
+}
+
+.faculty-login-header .logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #5b21b6, #8b5cf6);
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+
+.faculty-login-error {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: #fecaca;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
+.faculty-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.faculty-login-form label {
+  font-size: 0.9rem;
+  color: rgba(248, 250, 252, 0.8);
+  display: block;
+}
+
+.faculty-login-form .input-wrapper {
+  margin-top: 0.35rem;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.faculty-login-form input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.login-meta {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 0.85rem;
+}
+
+.link {
+  color: #93c5fd;
+  text-decoration: none;
+}
+
+.cta-button {
+  margin-top: 0.5rem;
+  width: 100%;
+  border: none;
+  border-radius: 16px;
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: linear-gradient(120deg, #2563eb, #7c3aed);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 15px 40px rgba(37, 99, 235, 0.35);
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.cta-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.login-footer {
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+  color: rgba(248, 250, 252, 0.7);
+  text-align: center;
+}
+

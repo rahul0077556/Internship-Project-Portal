@@ -1,0 +1,364 @@
+:root {
+  --faculty-bg: #f6f8fb;
+  --faculty-card: #ffffff;
+  --faculty-border: #e5e7eb;
+  --faculty-text: #1f2937;
+  --faculty-muted: #6b7280;
+  --faculty-primary: #5b21b6;
+  --faculty-primary-light: #8b5cf6;
+  --faculty-accent: #0ea5e9;
+}
+
+.faculty-shell {
+  min-height: calc(100vh - 120px);
+  padding: 2rem 1.5rem 3rem;
+  background: var(--faculty-bg);
+  color: var(--faculty-text);
+  font-family: 'Inter', 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.faculty-heading {
+  margin-bottom: 1.5rem;
+}
+
+.faculty-heading h1 {
+  font-size: 2rem;
+  margin: 0;
+  font-weight: 700;
+}
+
+.faculty-heading p {
+  color: var(--faculty-muted);
+  margin-top: 0.35rem;
+}
+
+.faculty-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .faculty-grid.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .faculty-grid.three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .faculty-grid.four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.stat-card {
+  background: var(--faculty-card);
+  border-radius: 18px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 15px 35px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(90, 103, 137, 0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--faculty-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stat-card strong {
+  display: block;
+  margin-top: 0.9rem;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.stat-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(16, 185, 129, 0.1);
+  color: #047857;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.chart-card,
+.table-card,
+.filters-card,
+.report-card {
+  background: var(--faculty-card);
+  border-radius: 20px;
+  padding: 1.5rem;
+  box-shadow: 0 25px 45px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(90, 103, 137, 0.08);
+}
+
+.chart-card h3,
+.table-card h3,
+.filters-card h3 {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+}
+
+.filters-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .filters-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.filters-grid label {
+  font-size: 0.9rem;
+  color: var(--faculty-muted);
+  margin-bottom: 0.35rem;
+}
+
+.filters-grid select,
+.filters-grid input {
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--faculty-border);
+  background: #fff;
+  font-size: 0.95rem;
+}
+
+.filters-actions {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.filters-actions button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.65rem 1.3rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-primary-gradient {
+  background: linear-gradient(120deg, var(--faculty-primary), var(--faculty-primary-light));
+  color: #fff;
+  box-shadow: 0 10px 25px rgba(91, 33, 182, 0.3);
+}
+
+.btn-soft {
+  background: rgba(14, 165, 233, 0.12);
+  color: var(--faculty-accent);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.data-table thead {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.9rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--faculty-border);
+  font-size: 0.9rem;
+}
+
+.data-table tbody tr {
+  transition: background 0.15s ease, transform 0.15s ease;
+  cursor: pointer;
+}
+
+.data-table tbody tr:hover {
+  background: rgba(91, 33, 182, 0.04);
+  transform: translateX(4px);
+}
+
+.pagination {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pagination button {
+  border: none;
+  background: #fff;
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  box-shadow: 0 5px 15px rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 99;
+}
+
+.modal-card {
+  width: min(720px, 100%);
+  background: #fff;
+  border-radius: 24px;
+  padding: 1.75rem;
+  position: relative;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  border: none;
+  background: rgba(15, 23, 42, 0.05);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.report-card h4 {
+  margin: 0 0 0.5rem;
+}
+
+.report-card p {
+  color: var(--faculty-muted);
+  margin-bottom: 1rem;
+  min-height: 48px;
+}
+
+.report-card .btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.report-card button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.report-card button.primary {
+  background: linear-gradient(120deg, #2563eb, #3b82f6);
+  color: #fff;
+}
+
+.report-card button.secondary {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+}
+
+.link {
+  color: var(--faculty-primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.faculty-error {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.skeleton {
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.15), rgba(148, 163, 184, 0.35), rgba(148, 163, 184, 0.15));
+  animation: shimmer 1.5s infinite;
+  height: 16px;
+}
+
+.skeleton-number {
+  height: 32px;
+  width: 90%;
+  margin-top: 0.75rem;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
+}
+
+.settings-panel {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.settings-panel form {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-panel label {
+  font-size: 0.85rem;
+  color: var(--faculty-muted);
+}
+
+.settings-panel input,
+.settings-panel textarea,
+.settings-panel select {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border-radius: 12px;
+  border: 1px solid var(--faculty-border);
+  font-size: 0.95rem;
+}
+
+.settings-panel textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.settings-save {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: rgba(99, 102, 241, 0.1);
+  color: #4c1d95;
+}
+
+.search-input {
+  width: 100%;
+  border-radius: 999px;
+  border: 1px solid var(--faculty-border);
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+}
+

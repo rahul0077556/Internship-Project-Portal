@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Internship Portal - PICT Techfiesta</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <i class="fas fa-graduation-cap"></i>
+                <span>PICT Internship Portal</span>
+            </div>
+            <div class="nav-menu" id="navMenu">
+                <a href="#" onclick="showView('home')" class="nav-link active">Home</a>
+                <a href="#" onclick="showView('opportunities')" class="nav-link">Opportunities</a>
+                <span id="authLinks">
+                    <a href="#" onclick="showView('login')" class="nav-link">Login</a>
+                    <a href="#" onclick="showView('register')" class="nav-link btn-primary">Sign Up</a>
+                </span>
+                <span id="userLinks" style="display: none;">
+                    <a href="#" onclick="showView('dashboard')" class="nav-link">Dashboard</a>
+                    <a href="#" onclick="showView('profile')" class="nav-link">Profile</a>
+                    <a href="#" onclick="showView('messages')" class="nav-link">
+                        Messages <span id="messageBadge" class="badge" style="display: none;">0</span>
+                    </a>
+                    <a href="#" onclick="showView('notifications')" class="nav-link">
+                        <i class="fas fa-bell"></i> <span id="notificationBadge" class="badge" style="display: none;">0</span>
+                    </a>
+                    <a href="#" onclick="logout()" class="nav-link">Logout</a>
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Home View -->
+        <div id="homeView" class="view active">
+            <div class="hero">
+                <h1>Welcome to PICT Internship Portal</h1>
+                <p>Connect students with internships and projects. Find your next opportunity today!</p>
+                <div class="hero-buttons">
+                    <button onclick="showView('register')" class="btn btn-primary btn-large">Get Started</button>
+                    <button onclick="showView('opportunities')" class="btn btn-secondary btn-large">Browse Opportunities</button>
+                </div>
+            </div>
+            <div class="features">
+                <div class="feature-card">
+                    <i class="fas fa-user-graduate"></i>
+                    <h3>For Students</h3>
+                    <p>Find internships, track applications, get AI-powered recommendations</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-building"></i>
+                    <h3>For Companies</h3>
+                    <p>Post opportunities, screen candidates, find the perfect match</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-chalkboard-teacher"></i>
+                    <h3>For Faculty</h3>
+                    <p>Post academic projects, connect with students</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Login View -->
+        <div id="loginView" class="view">
+            <div class="auth-container">
+                <h2>Login</h2>
+                <form id="loginForm" onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="loginEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="loginPassword" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Login</button>
+                    <p class="text-center">Don't have an account? <a href="#" onclick="showView('register')">Sign up</a></p>
+                </form>
+            </div>
+        </div>
+
+        <!-- Register View -->
+        <div id="registerView" class="view">
+            <div class="auth-container">
+                <h2>Sign Up</h2>
+                <form id="registerForm" onsubmit="handleRegister(event)">
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select id="registerRole" required onchange="toggleRegisterFields()">
+                            <option value="">Select Role</option>
+                            <option value="student">Student</option>
+                            <option value="company">Company</option>
+                            <option value="faculty">Faculty</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="registerEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="registerPassword" required minlength="6">
+                    </div>
+                    <div id="studentFields" style="display: none;">
+                        <div class="form-group">
+                            <label>First Name</label>
+                            <input type="text" id="registerFirstName">
+                        </div>
+                        <div class="form-group">
+                            <label>Last Name</label>
+                            <input type="text" id="registerLastName">
+                        </div>
+                    </div>
+                    <div id="companyFields" style="display: none;">
+                        <div class="form-group">
+                            <label>Company/Organization Name</label>
+                            <input type="text" id="registerCompanyName">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Sign Up</button>
+                    <p class="text-center">Already have an account? <a href="#" onclick="showView('login')">Login</a></p>
+                </form>
+            </div>
+        </div>
+
+        <!-- Dashboard View -->
+        <div id="dashboardView" class="view">
+            <h2>Dashboard</h2>
+            <div id="dashboardContent"></div>
+        </div>
+
+        <!-- Profile View -->
+        <div id="profileView" class="view">
+            <h2>My Profile</h2>
+            <div id="profileContent"></div>
+        </div>
+
+        <!-- Opportunities View -->
+        <div id="opportunitiesView" class="view">
+            <div class="view-header">
+                <h2>Opportunities</h2>
+                <div class="filters">
+                    <input type="text" id="searchInput" placeholder="Search..." onkeyup="filterOpportunities()">
+                    <select id="domainFilter" onchange="filterOpportunities()">
+                        <option value="">All Domains</option>
+                    </select>
+                    <select id="workTypeFilter" onchange="filterOpportunities()">
+                        <option value="">All Work Types</option>
+                        <option value="remote">Remote</option>
+                        <option value="onsite">Onsite</option>
+                        <option value="hybrid">Hybrid</option>
+                    </select>
+                </div>
+            </div>
+            <div id="opportunitiesList" class="opportunities-grid"></div>
+        </div>
+
+        <!-- Messages View -->
+        <div id="messagesView" class="view">
+            <h2>Messages</h2>
+            <div id="messagesContent"></div>
+        </div>
+
+        <!-- Notifications View -->
+        <div id="notificationsView" class="view">
+            <h2>Notifications</h2>
+            <div id="notificationsContent"></div>
+        </div>
+    </main>
+
+    <!-- Modal for Opportunity Details -->
+    <div id="opportunityModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div id="opportunityModalContent"></div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="spinner" style="display: none;">
+        <div class="spinner-content">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
+
