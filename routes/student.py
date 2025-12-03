@@ -25,6 +25,7 @@ from fpdf import FPDF
 import os
 import json
 from routes.helpers import get_user_id
+from supabase_storage import is_supabase_configured, upload_file_to_supabase
 
 student_bp = Blueprint('student', __name__)
 
@@ -767,20 +768,36 @@ def attachments_collection():
         entries = StudentAttachment.query.filter_by(student_id=profile.id).all()
         return jsonify([e.to_dict() for e in entries]), 200
 
+    # Handle file upload (form-data)
     if 'file' in request.files:
         upload = request.files['file']
         if upload.filename == '':
             return jsonify({'error': 'No file selected'}), 400
+
         filename = secure_filename(upload.filename)
-        attachments_dir = os.path.join('uploads', 'attachments')
-        os.makedirs(attachments_dir, exist_ok=True)
-        filepath = os.path.join(attachments_dir, f"{profile.id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{filename}")
-        upload.save(filepath)
+
+        # Prefer Supabase Storage if configured
+        file_url = None
+        if is_supabase_configured():
+            folder = f"attachments/{profile.id}"
+            file_url = upload_file_to_supabase(upload, filename, folder)
+
+        # Fallback to local filesystem if Supabase not available
+        if not file_url:
+            attachments_dir = os.path.join('uploads', 'attachments')
+            os.makedirs(attachments_dir, exist_ok=True)
+            filepath = os.path.join(
+                attachments_dir,
+                f"{profile.id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{filename}",
+            )
+            upload.save(filepath)
+            file_url = filepath
+
         entry = StudentAttachment(
             student_id=profile.id,
             title=request.form.get('title', filename),
-            file_path=filepath,
-            attachment_type=request.form.get('attachment_type', 'document')
+            file_path=file_url,
+            attachment_type=request.form.get('attachment_type', 'document'),
         )
         db.session.add(entry)
         db.session.commit()
@@ -811,7 +828,8 @@ def attachments_detail(entry_id):
         return error_response, status
 
     if request.method == 'DELETE':
-        if entry.file_path and os.path.exists(entry.file_path):
+        # If stored locally, remove from filesystem; Supabase objects are kept
+        if entry.file_path and not entry.file_path.startswith("http") and os.path.exists(entry.file_path):
             try:
                 os.remove(entry.file_path)
             except OSError:
@@ -903,17 +921,32 @@ def upload_resume():
             return jsonify({'error': 'Invalid file type. Allowed: PDF, DOC, DOCX'}), 400
         
         filename = secure_filename(f"{profile.user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}")
-        filepath = os.path.join('uploads', 'resumes', filename)
-        file.save(filepath)
+
+        # Prefer Supabase Storage if configured
+        resume_url = None
+        if is_supabase_configured():
+            folder = f"resumes/{profile.id}"
+            resume_url = upload_file_to_supabase(file, filename, folder)
+
+        # Fallback to local filesystem if Supabase not available
+        if not resume_url:
+            resumes_dir = os.path.join('uploads', 'resumes')
+            os.makedirs(resumes_dir, exist_ok=True)
+            filepath = os.path.join(resumes_dir, filename)
+            file.save(filepath)
+            resume_url = filepath
         
-        # Delete old resume if exists
-        if profile.resume_path and os.path.exists(profile.resume_path):
-            os.remove(profile.resume_path)
+        # Delete old resume if exists and it was stored locally
+        if profile.resume_path and not str(profile.resume_path).startswith("http") and os.path.exists(profile.resume_path):
+            try:
+                os.remove(profile.resume_path)
+            except OSError:
+                pass
         
-        profile.resume_path = filepath
+        profile.resume_path = resume_url
         db.session.commit()
         
-        return jsonify({'message': 'Resume uploaded successfully', 'resume_path': filepath}), 200
+        return jsonify({'message': 'Resume uploaded successfully', 'resume_path': resume_url}), 200
     
     except Exception as e:
         db.session.rollback()
@@ -927,7 +960,14 @@ def download_resume():
         if error_response:
             return error_response, status
         
-        if not profile.resume_path or not os.path.exists(profile.resume_path):
+        if not profile.resume_path:
+            return jsonify({'error': 'Resume not found'}), 404
+
+        # If stored in Supabase (URL), let the client download from the URL directly
+        if str(profile.resume_path).startswith("http"):
+            return jsonify({'resume_url': profile.resume_path}), 200
+        
+        if not os.path.exists(profile.resume_path):
             return jsonify({'error': 'Resume not found'}), 404
         
         return send_file(profile.resume_path, as_attachment=True)
@@ -1157,6 +1197,90 @@ def get_applications():
         applications = Application.query.filter_by(student_id=profile.id).order_by(Application.applied_at.desc()).all()
         
         return jsonify([app.to_dict() for app in applications]), 200
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@student_bp.route('/files/check', methods=['GET'])
+@jwt_required()
+def check_files_status():
+    """
+    Check the status of uploaded files - verify if they exist in Supabase.
+    Returns information about resume and attachments for the current student.
+    """
+    try:
+        profile, error_response, status = get_student_profile()
+        if error_response:
+            return error_response, status
+        
+        from supabase_storage import (
+            is_supabase_configured,
+            get_file_info_from_url,
+            get_all_student_files
+        )
+        
+        result = {
+            'supabase_configured': is_supabase_configured(),
+            'resume': None,
+            'attachments': [],
+            'storage_files': {
+                'resumes': 0,
+                'attachments': 0
+            }
+        }
+        
+        # Check resume
+        if profile.resume_path:
+            if str(profile.resume_path).startswith('http'):
+                # Supabase URL
+                file_info = get_file_info_from_url(profile.resume_path)
+                result['resume'] = {
+                    'url': profile.resume_path,
+                    'exists': file_info['exists'] if file_info else False,
+                    'storage_path': file_info.get('storage_path') if file_info else None,
+                    'location': 'supabase'
+                }
+            else:
+                # Local file
+                result['resume'] = {
+                    'path': profile.resume_path,
+                    'exists': os.path.exists(profile.resume_path) if profile.resume_path else False,
+                    'location': 'local'
+                }
+        
+        # Check attachments
+        attachments = StudentAttachment.query.filter_by(student_id=profile.id).all()
+        for attachment in attachments:
+            if str(attachment.file_path).startswith('http'):
+                # Supabase URL
+                file_info = get_file_info_from_url(attachment.file_path)
+                result['attachments'].append({
+                    'id': attachment.id,
+                    'title': attachment.title,
+                    'url': attachment.file_path,
+                    'exists': file_info['exists'] if file_info else False,
+                    'storage_path': file_info.get('storage_path') if file_info else None,
+                    'location': 'supabase'
+                })
+            else:
+                # Local file
+                result['attachments'].append({
+                    'id': attachment.id,
+                    'title': attachment.title,
+                    'path': attachment.file_path,
+                    'exists': os.path.exists(attachment.file_path) if attachment.file_path else False,
+                    'location': 'local'
+                })
+        
+        # Get files directly from Supabase storage (if configured)
+        if is_supabase_configured():
+            storage_files = get_all_student_files(profile.id)
+            result['storage_files'] = {
+                'resumes': len(storage_files['resumes']),
+                'attachments': len(storage_files['attachments'])
+            }
+        
+        return jsonify(result), 200
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500

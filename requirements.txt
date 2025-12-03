@@ -16,4 +16,7 @@ python-socketio==5.10.0
 eventlet==0.33.3
 fpdf==1.7.2
 psycopg2-binary==2.9.9
+supabase>=2.24.0
+httpx>=0.28.0
+websockets>=15.0.0
 
