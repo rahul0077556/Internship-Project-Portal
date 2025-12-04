@@ -98,10 +98,54 @@ def upload_file_to_supabase(file_obj, original_filename: str, folder: str) -> Op
     unique_name = f"{uuid.uuid4().hex}{ext}"
     storage_path = f"{folder}/{unique_name}" if folder else unique_name
 
-    # For Werkzeug FileStorage, pass the file object directly
+    # Ensure file pointer is at the start
+    if hasattr(file_obj, 'seek'):
+        file_obj.seek(0)
+    
+    # Read file content as bytes (new Supabase client requires bytes)
     try:
-        client.storage.from_(SUPABASE_BUCKET).upload(storage_path, file_obj)
-    except Exception:
+        if hasattr(file_obj, 'read'):
+            file_content = file_obj.read()
+        elif isinstance(file_obj, bytes):
+            file_content = file_obj
+        else:
+            # Try to convert to bytes
+            file_content = bytes(file_obj)
+        
+        # Reset pointer for potential fallback use
+        if hasattr(file_obj, 'seek'):
+            file_obj.seek(0)
+    except Exception as e:
+        import sys
+        print(f"Error reading file for upload: {str(e)}", file=sys.stderr)
+        return None
+    
+    # Upload file content as bytes
+    try:
+        # New Supabase client (2.24+) requires bytes and content-type
+        from mimetypes import guess_type
+        content_type, _ = guess_type(original_filename or "")
+        if not content_type:
+            content_type = "application/octet-stream"
+        
+        # Upload with content type
+        result = client.storage.from_(SUPABASE_BUCKET).upload(
+            storage_path, 
+            file_content,
+            file_options={"content-type": content_type}
+        )
+        
+        # Check if upload was successful
+        if result:
+            public_url = client.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)
+            return public_url
+        else:
+            return None
+            
+    except Exception as e:
+        import sys
+        error_msg = str(e)
+        print(f"Error uploading to Supabase: {error_msg}", file=sys.stderr)
         return None
 
     public_url = client.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)
