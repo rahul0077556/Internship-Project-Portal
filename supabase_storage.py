@@ -72,11 +72,40 @@ def _get_client() -> Optional["Client"]:
         return None
 
 
+def _reset_client():
+    """
+    Reset the cached Supabase client. Useful when connection issues occur.
+    """
+    global _supabase_client
+    _supabase_client = None
+
+
 def is_supabase_configured() -> bool:
     """
     Helper to check if Supabase Storage is available.
     """
     return bool(_get_client())
+
+
+def _normalize_path(path: str) -> str:
+    """
+    Normalize a path to use forward slashes only (Supabase requirement).
+    Also sanitize to remove invalid characters.
+    """
+    if not path:
+        return ""
+    # Replace backslashes with forward slashes (Windows paths)
+    path = path.replace("\\", "/")
+    # Remove leading/trailing slashes and spaces
+    path = path.strip("/ ")
+    # Remove any double slashes
+    while "//" in path:
+        path = path.replace("//", "/")
+    # Remove invalid characters for Supabase storage paths
+    invalid_chars = ['<', '>', ':', '"', '|', '?', '*']
+    for char in invalid_chars:
+        path = path.replace(char, '_')
+    return path
 
 
 def upload_file_to_supabase(file_obj, original_filename: str, folder: str) -> Optional[str]:
@@ -91,12 +120,30 @@ def upload_file_to_supabase(file_obj, original_filename: str, folder: str) -> Op
     if not client:
         return None
 
-    # Ensure folder prefix has no leading slash
-    folder = folder.strip("/ ")
+    # Normalize folder path - ensure forward slashes only
+    folder = _normalize_path(folder or "")
 
-    _, ext = os.path.splitext(original_filename or "")
+    # Sanitize filename - extract extension and clean name
+    if not original_filename:
+        original_filename = "file"
+    
+    # Normalize filename path (handle Windows paths)
+    original_filename = original_filename.replace("\\", "/")
+    clean_filename = os.path.basename(original_filename)
+    
+    # Extract extension
+    _, ext = os.path.splitext(clean_filename)
+    # Sanitize extension (remove any invalid characters)
+    ext = "".join(c for c in ext if c.isalnum() or c in "._-")[:20]  # Limit extension length
+    
+    # Generate unique filename
     unique_name = f"{uuid.uuid4().hex}{ext}"
-    storage_path = f"{folder}/{unique_name}" if folder else unique_name
+    
+    # Build storage path with normalized folder
+    if folder:
+        storage_path = _normalize_path(f"{folder}/{unique_name}")
+    else:
+        storage_path = unique_name
 
     # Ensure file pointer is at the start
     if hasattr(file_obj, 'seek'):
@@ -112,6 +159,12 @@ def upload_file_to_supabase(file_obj, original_filename: str, folder: str) -> Op
             # Try to convert to bytes
             file_content = bytes(file_obj)
         
+        # Check if file is empty
+        if not file_content or len(file_content) == 0:
+            import sys
+            print(f"Error: File is empty: {original_filename}", file=sys.stderr)
+            return None
+        
         # Reset pointer for potential fallback use
         if hasattr(file_obj, 'seek'):
             file_obj.seek(0)
@@ -120,36 +173,109 @@ def upload_file_to_supabase(file_obj, original_filename: str, folder: str) -> Op
         print(f"Error reading file for upload: {str(e)}", file=sys.stderr)
         return None
     
-    # Upload file content as bytes
-    try:
-        # New Supabase client (2.24+) requires bytes and content-type
-        from mimetypes import guess_type
-        content_type, _ = guess_type(original_filename or "")
-        if not content_type:
-            content_type = "application/octet-stream"
-        
-        # Upload with content type
-        result = client.storage.from_(SUPABASE_BUCKET).upload(
-            storage_path, 
-            file_content,
-            file_options={"content-type": content_type}
-        )
-        
-        # Check if upload was successful
-        if result:
-            public_url = client.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)
-            return public_url
-        else:
-            return None
+    # Upload file content as bytes with retry logic
+    max_retries = 3
+    retry_delay = 1.0  # Start with 1 second delay
+    
+    for attempt in range(max_retries):
+        try:
+            # New Supabase client (2.24+) requires bytes and content-type
+            from mimetypes import guess_type
+            content_type, _ = guess_type(clean_filename or "")
+            if not content_type:
+                content_type = "application/octet-stream"
             
-    except Exception as e:
-        import sys
-        error_msg = str(e)
-        print(f"Error uploading to Supabase: {error_msg}", file=sys.stderr)
-        return None
-
-    public_url = client.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)
-    return public_url
+            # Ensure storage_path uses only forward slashes (double-check)
+            storage_path = storage_path.replace("\\", "/").strip("/")
+            
+            # Ensure storage_path doesn't start with a slash
+            if storage_path.startswith("/"):
+                storage_path = storage_path[1:]
+            
+            # Validate storage_path doesn't contain invalid characters
+            if any(char in storage_path for char in ['\x00', '\r', '\n']):
+                import sys
+                print(f"Error: Storage path contains invalid control characters", file=sys.stderr)
+                return None
+            
+            # Add small delay before upload to avoid connection issues
+            if attempt > 0:
+                import time
+                time.sleep(retry_delay * attempt)
+            
+            # Try upload with upsert option (replaces existing files)
+            try:
+                result = client.storage.from_(SUPABASE_BUCKET).upload(
+                    storage_path, 
+                    file_content,
+                    file_options={
+                        "content-type": content_type,
+                        "upsert": True
+                    }
+                )
+            except TypeError:
+                # If that fails, try without file_options dict format
+                try:
+                    result = client.storage.from_(SUPABASE_BUCKET).upload(
+                        storage_path, 
+                        file_content,
+                        {"content-type": content_type, "upsert": True}
+                    )
+                except TypeError:
+                    # Try simplest form - just path and content
+                    result = client.storage.from_(SUPABASE_BUCKET).upload(
+                        storage_path, 
+                        file_content
+                    )
+            
+            # Check if upload was successful
+            # Result can be a dict with data or just truthy
+            if result:
+                # Get public URL
+                try:
+                    public_url = client.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)
+                    return public_url
+                except Exception as url_error:
+                    import sys
+                    print(f"Warning: Upload succeeded but could not get public URL: {url_error}", file=sys.stderr)
+                    # Return a constructed URL if we can't get it from the client
+                    if SUPABASE_URL:
+                        base_url = SUPABASE_URL.rstrip('/')
+                        public_url = f"{base_url}/storage/v1/object/public/{SUPABASE_BUCKET}/{storage_path}"
+                        return public_url
+                    return None
+            else:
+                # If result is falsy, retry
+                if attempt < max_retries - 1:
+                    continue
+                return None
+            
+        except Exception as e:
+            # If this is not the last attempt, retry
+            if attempt < max_retries - 1:
+                import sys
+                import time
+                error_msg = str(e)
+                # Check if it's a connection error that might benefit from retry
+                if any(keyword in error_msg.lower() for keyword in ['disconnected', 'connection', 'request line', 'timeout']):
+                    print(f"  ⚠️  Upload attempt {attempt + 1} failed (will retry): {error_msg[:100]}", file=sys.stderr)
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+            
+            # Last attempt or non-retryable error
+            if attempt == max_retries - 1:
+                import sys
+                import traceback
+                error_msg = str(e)
+                print(f"Error uploading to Supabase: {error_msg}", file=sys.stderr)
+                print(f"  Storage path: {storage_path}", file=sys.stderr)
+                print(f"  Folder: {folder}", file=sys.stderr)
+                print(f"  Filename: {clean_filename}", file=sys.stderr)
+                print(f"  File size: {len(file_content)} bytes", file=sys.stderr)
+                print(f"  Attempts: {attempt + 1}/{max_retries}", file=sys.stderr)
+                return None
+    
+    return None
 
 
 def check_file_exists(storage_path: str) -> bool:

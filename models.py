@@ -83,6 +83,7 @@ class StudentProfile(db.Model):
     positions = db.relationship('StudentPosition', backref='student', lazy='dynamic', cascade='all, delete-orphan')
     attachments = db.relationship('StudentAttachment', backref='student', lazy='dynamic', cascade='all, delete-orphan')
     offers = db.relationship('StudentOffer', backref='student', lazy='dynamic', cascade='all, delete-orphan')
+    skills_rel = db.relationship('StudentSkill', backref='student', lazy='dynamic', cascade='all, delete-orphan')
     
     def to_dict(self):
         return {
@@ -450,6 +451,7 @@ class Opportunity(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     applications = db.relationship('Application', backref='opportunity', lazy='dynamic', cascade='all, delete-orphan')
+    skills_rel = db.relationship('OpportunitySkill', backref='opportunity', lazy='dynamic', cascade='all, delete-orphan')
     
     def to_dict(self):
         return {
@@ -575,3 +577,156 @@ class Blacklist(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
+
+# ==================== SKILLS MATCHING SYSTEM ====================
+
+class Skill(db.Model):
+    """Master skills table - normalized list of all available skills"""
+    __tablename__ = 'skills'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    category = db.Column(db.String(50))  # 'programming', 'design', 'language', 'framework', etc.
+    normalized_name = db.Column(db.String(100), index=True)  # Lowercase, normalized for matching
+    aliases = db.Column(db.Text)  # JSON array of alternative names
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    student_skills = db.relationship('StudentSkill', backref='skill', lazy='dynamic', cascade='all, delete-orphan')
+    opportunity_skills = db.relationship('OpportunitySkill', backref='skill', lazy='dynamic', cascade='all, delete-orphan')
+    external_job_skills = db.relationship('ExternalJobSkill', backref='skill', lazy='dynamic', cascade='all, delete-orphan')
+    
+    def __init__(self, name, category=None, aliases=None):
+        self.name = name
+        self.category = category
+        self.normalized_name = self._normalize_skill_name(name)
+        self.aliases = json.dumps(aliases) if aliases else None
+    
+    @staticmethod
+    def _normalize_skill_name(name):
+        """Normalize skill name for matching (lowercase, strip spaces)"""
+        if not name:
+            return ""
+        return name.lower().strip()
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'category': self.category,
+            'normalized_name': self.normalized_name,
+            'aliases': json.loads(self.aliases) if self.aliases else []
+        }
+
+
+class StudentSkill(db.Model):
+    """Junction table: Students and their skills"""
+    __tablename__ = 'student_skills'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('student_profiles.id'), nullable=False, index=True)
+    skill_id = db.Column(db.Integer, db.ForeignKey('skills.id'), nullable=False, index=True)
+    proficiency_level = db.Column(db.String(20), default='intermediate')  # 'beginner', 'intermediate', 'advanced', 'expert'
+    years_of_experience = db.Column(db.Float, default=0.0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (db.UniqueConstraint('student_id', 'skill_id', name='unique_student_skill'),)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'student_id': self.student_id,
+            'skill_id': self.skill_id,
+            'skill_name': self.skill.name if self.skill else None,
+            'proficiency_level': self.proficiency_level,
+            'years_of_experience': self.years_of_experience
+        }
+
+
+class OpportunitySkill(db.Model):
+    """Junction table: Opportunities and required skills"""
+    __tablename__ = 'opportunity_skills'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    opportunity_id = db.Column(db.Integer, db.ForeignKey('opportunities.id'), nullable=False, index=True)
+    skill_id = db.Column(db.Integer, db.ForeignKey('skills.id'), nullable=False, index=True)
+    is_required = db.Column(db.Boolean, default=True)  # True for required, False for preferred
+    priority = db.Column(db.Integer, default=1)  # Higher number = more important
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (db.UniqueConstraint('opportunity_id', 'skill_id', name='unique_opportunity_skill'),)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'opportunity_id': self.opportunity_id,
+            'skill_id': self.skill_id,
+            'skill_name': self.skill.name if self.skill else None,
+            'is_required': self.is_required,
+            'priority': self.priority
+        }
+
+
+class ExternalJob(db.Model):
+    """External jobs fetched from web APIs or scraping"""
+    __tablename__ = 'external_jobs'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False, index=True)
+    company_name = db.Column(db.String(200), index=True)
+    description = db.Column(db.Text)
+    location = db.Column(db.String(200))
+    job_type = db.Column(db.String(50))  # 'internship', 'full-time', 'part-time', 'contract'
+    salary_range = db.Column(db.String(100))
+    application_url = db.Column(db.String(500), nullable=False)
+    source = db.Column(db.String(50))  # 'linkedin', 'indeed', 'internshala', 'naukri', etc.
+    source_id = db.Column(db.String(200))  # External ID from source
+    posted_date = db.Column(db.DateTime)
+    expiry_date = db.Column(db.DateTime)
+    is_active = db.Column(db.Boolean, default=True, index=True)
+    fetched_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    skills = db.relationship('ExternalJobSkill', backref='external_job', lazy='dynamic', cascade='all, delete-orphan')
+    
+    __table_args__ = (db.UniqueConstraint('source', 'source_id', name='unique_external_job'),)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'company_name': self.company_name,
+            'description': self.description,
+            'location': self.location,
+            'job_type': self.job_type,
+            'salary_range': self.salary_range,
+            'application_url': self.application_url,
+            'source': self.source,
+            'posted_date': self.posted_date.isoformat() if self.posted_date else None,
+            'expiry_date': self.expiry_date.isoformat() if self.expiry_date else None,
+            'is_active': self.is_active,
+            'fetched_at': self.fetched_at.isoformat() if self.fetched_at else None
+        }
+
+
+class ExternalJobSkill(db.Model):
+    """Junction table: External jobs and their required skills"""
+    __tablename__ = 'external_job_skills'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    external_job_id = db.Column(db.Integer, db.ForeignKey('external_jobs.id'), nullable=False, index=True)
+    skill_id = db.Column(db.Integer, db.ForeignKey('skills.id'), nullable=False, index=True)
+    confidence = db.Column(db.Float, default=1.0)  # Confidence score if extracted via NLP
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (db.UniqueConstraint('external_job_id', 'skill_id', name='unique_external_job_skill'),)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'external_job_id': self.external_job_id,
+            'skill_id': self.skill_id,
+            'skill_name': self.skill.name if self.skill else None,
+            'confidence': self.confidence
+        }

@@ -15,6 +15,7 @@ Make sure your .env file has:
 
 import os
 import sys
+import time
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -52,35 +53,66 @@ def migrate_attachments():
     for attachment in attachments:
         file_path = attachment.file_path
         
-        # Check if file exists
+        # Normalize Windows paths - convert backslashes to forward slashes for display
+        normalized_path = file_path.replace("\\", "/") if file_path else ""
+        
+        # Check if file exists (use original path for OS check)
         if not os.path.exists(file_path):
-            print(f"   ⚠️  Skipping attachment ID {attachment.id}: File not found: {file_path}")
+            print(f"   ⚠️  Skipping attachment ID {attachment.id}: File not found: {normalized_path}")
             skipped += 1
             continue
         
         try:
+            # Get absolute path to handle relative paths correctly
+            abs_file_path = os.path.abspath(file_path)
+            
             # Extract original filename from path or use title
-            original_filename = os.path.basename(file_path)
+            original_filename = os.path.basename(abs_file_path)
+            
             # Remove the timestamp prefix if present (format: student_id_timestamp_filename)
             if '_' in original_filename:
                 parts = original_filename.split('_', 2)
                 if len(parts) >= 3 and parts[0].isdigit():
                     original_filename = parts[2]  # Get the actual filename
             
+            # Use title if filename extraction failed or is empty
+            if not original_filename or original_filename == "":
+                original_filename = attachment.title or "document"
+            
+            # Ensure filename has extension
+            if not os.path.splitext(original_filename)[1]:
+                # Try to get extension from original path
+                _, ext = os.path.splitext(abs_file_path)
+                if ext:
+                    original_filename = original_filename + ext
+            
+            # Check file size
+            file_size = os.path.getsize(abs_file_path)
+            if file_size == 0:
+                print(f"   ⚠️  Skipping attachment ID {attachment.id}: File is empty: {normalized_path}")
+                skipped += 1
+                continue
+            
             # Read the file
-            with open(file_path, 'rb') as f:
+            with open(abs_file_path, 'rb') as f:
                 file_content = f.read()
                 
-                # Create a BytesIO object for upload (like test_supabase_upload.py)
+                # Verify file was read correctly
+                if not file_content or len(file_content) == 0:
+                    print(f"   ⚠️  Skipping attachment ID {attachment.id}: Could not read file content: {normalized_path}")
+                    skipped += 1
+                    continue
+                
+                # Create a BytesIO object for upload
                 from io import BytesIO
                 file_data = BytesIO(file_content)
-                file_data.name = original_filename or attachment.title
+                file_data.name = original_filename
                 
-                # Upload to Supabase
+                # Upload to Supabase - folder path will be normalized in upload function
                 folder = f"attachments/{attachment.student_id}"
                 supabase_url = upload_file_to_supabase(
                     file_data,
-                    original_filename or attachment.title,
+                    original_filename,
                     folder
                 )
                 
@@ -91,23 +123,32 @@ def migrate_attachments():
                     db.session.commit()
                     
                     print(f"   ✅ Migrated attachment ID {attachment.id}: {original_filename}")
-                    print(f"      Old: {old_path}")
+                    print(f"      Old: {normalized_path}")
                     print(f"      New: {supabase_url}")
                     
                     # Optionally delete local file after successful migration
                     try:
-                        os.remove(file_path)
+                        os.remove(abs_file_path)
                         print(f"      🗑️  Deleted local file")
                     except OSError as e:
                         print(f"      ⚠️  Could not delete local file: {e}")
                     
                     migrated += 1
+                    # Add small delay between successful uploads to avoid connection issues
+                    time.sleep(0.5)
                 else:
                     print(f"   ❌ Failed to upload attachment ID {attachment.id}: Upload returned None")
+                    print(f"      File path: {normalized_path}")
+                    print(f"      Filename: {original_filename}")
                     failed += 1
-                    
+                    # Add delay after failures too to allow connection to reset
+                    time.sleep(1.0)
+                
         except Exception as e:
+            import traceback
             print(f"   ❌ Error migrating attachment ID {attachment.id}: {str(e)}")
+            print(f"      File path: {normalized_path}")
+            print(f"      Traceback: {traceback.format_exc()}")
             failed += 1
             db.session.rollback()
     
@@ -145,31 +186,58 @@ def migrate_resumes():
     for profile in profiles:
         file_path = profile.resume_path
         
-        # Check if file exists
+        # Normalize Windows paths - convert backslashes to forward slashes for display
+        normalized_path = file_path.replace("\\", "/") if file_path else ""
+        
+        # Check if file exists (use original path for OS check)
         if not os.path.exists(file_path):
-            print(f"   ⚠️  Skipping profile ID {profile.id}: Resume file not found: {file_path}")
+            print(f"   ⚠️  Skipping profile ID {profile.id}: Resume file not found: {normalized_path}")
             skipped += 1
             continue
         
         try:
+            # Get absolute path to handle relative paths correctly
+            abs_file_path = os.path.abspath(file_path)
+            
             # Extract original filename from path
-            original_filename = os.path.basename(file_path)
+            original_filename = os.path.basename(abs_file_path)
+            
             # Remove the timestamp prefix if present
             if '_' in original_filename:
                 parts = original_filename.split('_', 2)
                 if len(parts) >= 3:
                     original_filename = parts[2]
             
+            # Ensure filename has extension
+            if not os.path.splitext(original_filename)[1]:
+                # Try to get extension from original path
+                _, ext = os.path.splitext(abs_file_path)
+                if ext:
+                    original_filename = original_filename + ext
+            
+            # Check file size
+            file_size = os.path.getsize(abs_file_path)
+            if file_size == 0:
+                print(f"   ⚠️  Skipping profile ID {profile.id}: Resume file is empty: {normalized_path}")
+                skipped += 1
+                continue
+            
             # Read the file
-            with open(file_path, 'rb') as f:
+            with open(abs_file_path, 'rb') as f:
                 file_content = f.read()
                 
-                # Create a BytesIO object for upload (like test_supabase_upload.py)
+                # Verify file was read correctly
+                if not file_content or len(file_content) == 0:
+                    print(f"   ⚠️  Skipping profile ID {profile.id}: Could not read resume file content: {normalized_path}")
+                    skipped += 1
+                    continue
+                
+                # Create a BytesIO object for upload
                 from io import BytesIO
                 file_data = BytesIO(file_content)
                 file_data.name = original_filename
                 
-                # Upload to Supabase
+                # Upload to Supabase - folder path will be normalized in upload function
                 folder = f"resumes/{profile.id}"
                 supabase_url = upload_file_to_supabase(
                     file_data,
@@ -184,23 +252,32 @@ def migrate_resumes():
                     db.session.commit()
                     
                     print(f"   ✅ Migrated resume for profile ID {profile.id}: {original_filename}")
-                    print(f"      Old: {old_path}")
+                    print(f"      Old: {normalized_path}")
                     print(f"      New: {supabase_url}")
                     
                     # Optionally delete local file after successful migration
                     try:
-                        os.remove(file_path)
+                        os.remove(abs_file_path)
                         print(f"      🗑️  Deleted local file")
                     except OSError as e:
                         print(f"      ⚠️  Could not delete local file: {e}")
                     
                     migrated += 1
+                    # Add small delay between successful uploads
+                    time.sleep(0.5)
                 else:
                     print(f"   ❌ Failed to upload resume for profile ID {profile.id}: Upload returned None")
+                    print(f"      File path: {normalized_path}")
+                    print(f"      Filename: {original_filename}")
                     failed += 1
-                    
+                    # Add delay after failures to allow connection to reset
+                    time.sleep(1.0)
+                
         except Exception as e:
+            import traceback
             print(f"   ❌ Error migrating resume for profile ID {profile.id}: {str(e)}")
+            print(f"      File path: {normalized_path}")
+            print(f"      Traceback: {traceback.format_exc()}")
             failed += 1
             db.session.rollback()
     

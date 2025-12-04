@@ -26,6 +26,8 @@ import os
 import json
 from routes.helpers import get_user_id
 from supabase_storage import is_supabase_configured, upload_file_to_supabase
+from skills_matching import SkillsMatchingService
+from models import Skill, StudentSkill, OpportunitySkill, ExternalJob, ExternalJobSkill
 
 student_bp = Blueprint('student', __name__)
 

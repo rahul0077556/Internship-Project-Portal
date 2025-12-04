@@ -1,9 +1,11 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from models import db, User, CompanyProfile, Opportunity, Application, StudentProfile, Notification
+from models import Skill, OpportunitySkill
 from datetime import datetime
 import json
 from routes.helpers import get_user_id
+from skills_matching import SkillsMatchingService
 
 company_bp = Blueprint('company', __name__)
 
@@ -119,6 +121,21 @@ def create_opportunity():
         )
         
         db.session.add(opportunity)
+        db.session.flush()  # Get the ID without committing
+        
+        # Auto-sync skills if provided
+        if 'required_skills' in data and data['required_skills']:
+            skill_names = data['required_skills']
+            if isinstance(skill_names, list):
+                try:
+                    SkillsMatchingService.update_opportunity_skills(
+                        opportunity.id,
+                        skill_names,
+                        skill_names  # All are required by default
+                    )
+                except Exception as e:
+                    print(f"Warning: Could not sync skills: {e}")
+        
         db.session.commit()
         
         return jsonify({'message': 'Opportunity created successfully', 'opportunity': opportunity.to_dict()}), 201
@@ -164,6 +181,14 @@ def update_opportunity(opp_id):
             opportunity.domain = data['domain']
         if 'required_skills' in data:
             opportunity.required_skills = json.dumps(data['required_skills'])
+            # Also update normalized skills table
+            skill_names = data['required_skills']
+            if isinstance(skill_names, list):
+                SkillsMatchingService.update_opportunity_skills(
+                    opportunity.id,
+                    skill_names,
+                    skill_names  # All are required by default
+                )
         if 'duration' in data:
             opportunity.duration = data['duration']
         if 'stipend' in data:
@@ -316,6 +341,119 @@ def get_dashboard():
             }
         }), 200
     
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ==================== SKILLS MATCHING ENDPOINTS FOR COMPANIES ====================
+
+@company_bp.route('/opportunities/<int:opp_id>/skills', methods=['GET', 'PUT'])
+@jwt_required()
+def manage_opportunity_skills(opp_id):
+    """Get or update required skills for an opportunity"""
+    profile, error_response, status = get_company_profile()
+    if error_response:
+        return error_response, status
+    
+    opportunity = Opportunity.query.get_or_404(opp_id)
+    if opportunity.company_id != profile.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    if request.method == 'GET':
+        # Get all skills with opportunity's skills marked
+        all_skills = Skill.query.order_by(Skill.name).all()
+        opp_skill_ids = {os.skill_id for os in OpportunitySkill.query.filter_by(opportunity_id=opp_id).all()}
+        
+        skills_list = []
+        for skill in all_skills:
+            skill_dict = skill.to_dict()
+            skill_dict['is_required'] = skill.id in opp_skill_ids
+            if skill.id in opp_skill_ids:
+                opp_skill = OpportunitySkill.query.filter_by(
+                    opportunity_id=opp_id,
+                    skill_id=skill.id
+                ).first()
+                skill_dict['priority'] = opp_skill.priority if opp_skill else 1
+            skills_list.append(skill_dict)
+        
+        # Get opportunity's current skills
+        opp_skills = OpportunitySkill.query.filter_by(opportunity_id=opp_id).all()
+        current_skills = [os.to_dict() for os in opp_skills]
+        
+        return jsonify({
+            'all_skills': skills_list,
+            'current_skills': current_skills
+        }), 200
+    
+    elif request.method == 'PUT':
+        # Update opportunity skills
+        data = request.get_json() or {}
+        skill_names = data.get('skills', [])
+        required_skills = data.get('required_skills', skill_names)
+        
+        if not skill_names:
+            return jsonify({'error': 'Skills list is required'}), 400
+        
+        try:
+            SkillsMatchingService.update_opportunity_skills(
+                opp_id,
+                skill_names,
+                required_skills
+            )
+            
+            # Return updated skills
+            opp_skills = OpportunitySkill.query.filter_by(opportunity_id=opp_id).all()
+            return jsonify({
+                'message': 'Skills updated successfully',
+                'skills': [os.to_dict() for os in opp_skills]
+            }), 200
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+
+
+@company_bp.route('/opportunities/<int:opp_id>/matching-students', methods=['GET'])
+@jwt_required()
+def get_matching_students(opp_id):
+    """Get students matched with an opportunity"""
+    profile, error_response, status = get_company_profile()
+    if error_response:
+        return error_response, status
+    
+    opportunity = Opportunity.query.get_or_404(opp_id)
+    if opportunity.company_id != profile.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        min_match = float(request.args.get('min_match', 0.0))
+        limit = int(request.args.get('limit', 50))
+        
+        matched_students = SkillsMatchingService.get_matching_students(
+            opp_id,
+            limit=limit,
+            min_match=min_match
+        )
+        
+        return jsonify({
+            'opportunity': opportunity.to_dict(),
+            'matched_students': matched_students,
+            'total': len(matched_students)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@company_bp.route('/skills', methods=['GET'])
+@jwt_required()
+def get_all_skills():
+    """Get all available skills"""
+    try:
+        skills = Skill.query.order_by(Skill.name).all()
+        return jsonify({
+            'skills': [skill.to_dict() for skill in skills]
+        }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
