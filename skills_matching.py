@@ -38,20 +38,44 @@ class SkillsMatchingService:
     @staticmethod
     def get_or_create_skill(skill_name: str, category: str = None) -> Skill:
         """Get existing skill or create new one"""
+        if not skill_name or not skill_name.strip():
+            raise ValueError("Skill name cannot be empty")
+        
         normalized = SkillsMatchingService.normalize_skill_name(skill_name)
         
-        # Try to find by normalized name first
-        skill = Skill.query.filter_by(normalized_name=normalized).first()
+        # Try to find by normalized name first (case-insensitive)
+        skill = Skill.query.filter(
+            func.lower(Skill.normalized_name) == normalized
+        ).first()
         
         if not skill:
-            # Try to find by exact name
-            skill = Skill.query.filter(func.lower(Skill.name) == normalized).first()
+            # Try to find by exact name (case-insensitive)
+            skill = Skill.query.filter(
+                func.lower(Skill.name) == normalized
+            ).first()
         
         if not skill:
+            # Check if skill with same name exists (case-insensitive) before creating
+            existing = Skill.query.filter(
+                func.lower(Skill.name) == skill_name.lower().strip()
+            ).first()
+            
+            if existing:
+                return existing
+            
             # Create new skill
-            skill = Skill(name=skill_name, category=category)
-            db.session.add(skill)
-            db.session.flush()  # Get the ID without committing
+            try:
+                skill = Skill(name=skill_name.strip(), category=category)
+                db.session.add(skill)
+                db.session.flush()  # Get the ID without committing
+            except Exception as e:
+                # If creation fails (e.g., duplicate), try to find again
+                db.session.rollback()
+                skill = Skill.query.filter(
+                    func.lower(Skill.name) == skill_name.lower().strip()
+                ).first()
+                if not skill:
+                    raise e
         
         return skill
     

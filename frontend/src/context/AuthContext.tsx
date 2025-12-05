@@ -44,6 +44,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       : await authService.login(email, password);
     setUser(data.user);
     setProfile(data.profile);
+    return data; // Return data so Login component can check needs_skills_setup
   };
 
   const register = async (email: string, password: string, role: string, profileData: any) => {

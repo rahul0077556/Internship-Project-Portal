@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { applicationService } from '../../services/applicationService';
 import { studentService } from '../../services/studentService';
@@ -11,14 +11,13 @@ import {
   FiMapPin, 
   FiDollarSign, 
   FiClock, 
-  FiTrendingUp,
-  FiCheckCircle
+  FiTrendingUp
 } from 'react-icons/fi';
 import './Opportunities.css';
 
 const Opportunities: React.FC = () => {
   const [summary, setSummary] = useState<JobsSummary | null>(null);
-  const [activeTab, setActiveTab] = useState<'opportunities' | 'applications' | 'offers'>('opportunities');
+  const [activeTab, setActiveTab] = useState<'opportunities' | 'applications' | 'offers' | 'external-jobs'>('opportunities');
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [workTypeFilter, setWorkTypeFilter] = useState<string>('all');
@@ -33,17 +32,47 @@ const Opportunities: React.FC = () => {
     loadSummary();
   }, []);
 
+  const [matchedOpportunities, setMatchedOpportunities] = useState<any[]>([]);
+  const [externalJobs, setExternalJobs] = useState<any[]>([]);
+  const [loadingExternalJobs, setLoadingExternalJobs] = useState(false);
+
   const loadSummary = async () => {
     setLoading(true);
     try {
       const data = await studentService.getJobsSummary();
       setSummary(data);
+      
+      // Load matched opportunities (70%+ match)
+      try {
+        const matched = await studentService.getMatchedOpportunities(70);
+        setMatchedOpportunities(matched.matched_opportunities || []);
+      } catch (err) {
+        console.error('Failed to load matched opportunities:', err);
+      }
     } catch (error: any) {
       addToast('Failed to load opportunities', 'error');
     } finally {
       setLoading(false);
     }
   };
+
+  const loadExternalJobs = async () => {
+    setLoadingExternalJobs(true);
+    try {
+      const data = await studentService.getExternalJobs(70);
+      setExternalJobs(data.external_jobs || []);
+    } catch (error: any) {
+      addToast('Failed to load external jobs', 'error');
+    } finally {
+      setLoadingExternalJobs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'external-jobs' && externalJobs.length === 0) {
+      loadExternalJobs();
+    }
+  }, [activeTab]);
 
   const addToast = (message: string, type: ToastType = 'info') => {
     const id = Date.now().toString();
@@ -53,60 +82,6 @@ const Opportunities: React.FC = () => {
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
-
-  const filteredOpportunities = useMemo(() => {
-    if (!summary) return [];
-    
-    let filtered = summary.opportunities.filter((opp) => {
-      // Search filter
-      if (search) {
-        const searchLower = search.toLowerCase();
-        if (
-          !opp.title.toLowerCase().includes(searchLower) &&
-          !(opp.company || '').toLowerCase().includes(searchLower)
-        ) {
-          return false;
-        }
-      }
-
-      // Tag filter
-      if (selectedTag && !opp.tags.includes(selectedTag)) {
-        return false;
-      }
-
-      // Work type filter
-      if (workTypeFilter !== 'all') {
-        const jobType = opp.job_type?.toLowerCase() || '';
-        if (workTypeFilter === 'remote' && !jobType.includes('remote')) return false;
-        if (workTypeFilter === 'onsite' && !jobType.includes('onsite') && !jobType.includes('on-site')) return false;
-        if (workTypeFilter === 'hybrid' && !jobType.includes('hybrid')) return false;
-      }
-
-      // Stipend filter
-      if (stipendFilter !== 'all') {
-        const ctc = opp.ctc?.toLowerCase() || '';
-        if (stipendFilter === 'paid' && (ctc.includes('unpaid') || ctc.includes('0'))) return false;
-        if (stipendFilter === 'unpaid' && !ctc.includes('unpaid') && !ctc.includes('0')) return false;
-      }
-
-      return true;
-    });
-
-    // Sort
-    filtered.sort((a, b) => {
-      if (sortBy === 'match') {
-        return (b.match || 0) - (a.match || 0);
-      }
-      if (sortBy === 'deadline') {
-        // Assuming there's a deadline field - adjust as needed
-        return 0;
-      }
-      // Latest (default) - would need created_at field
-      return 0;
-    });
-
-    return filtered;
-  }, [summary, search, selectedTag, workTypeFilter, stipendFilter, sortBy]);
 
   const handleApply = (opportunity: JobOpportunityCard) => {
     setSelectedOpportunity(opportunity);
@@ -208,7 +183,7 @@ const Opportunities: React.FC = () => {
 
       {/* Tabs */}
       <div className="opportunities-tabs">
-        {(['opportunities', 'applications', 'offers'] as const).map((tab) => (
+        {(['opportunities', 'applications', 'offers', 'external-jobs'] as const).map((tab) => (
           <motion.button
             key={tab}
             className={`tab-button ${activeTab === tab ? 'active' : ''}`}
@@ -216,7 +191,7 @@ const Opportunities: React.FC = () => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === 'external-jobs' ? 'External Jobs' : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </motion.button>
         ))}
       </div>
@@ -226,6 +201,17 @@ const Opportunities: React.FC = () => {
         <div className="opportunities-main">
           {activeTab === 'opportunities' && (
             <>
+              {/* Show matched opportunities with match percentages */}
+              <motion.div
+                className="matched-opportunities-header"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <p className="match-info">
+                  📊 Showing opportunities with <strong>70%+ skills match</strong> (eligible to apply)
+                </p>
+              </motion.div>
+
               {/* Filters */}
               <motion.div
                 className="opportunities-filters"
@@ -299,46 +285,114 @@ const Opportunities: React.FC = () => {
                 )}
               </motion.div>
 
-              {/* Opportunities List */}
+              {/* Matched Opportunities List */}
               <AnimatePresence mode="wait">
                 <motion.div
-                  key="opportunities-list"
+                  key="matched-opportunities-list"
                   className="opportunities-list"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                 >
-                  {filteredOpportunities.length === 0 ? (
+                  {matchedOpportunities.length === 0 ? (
                     <motion.div
                       className="empty-state"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                     >
-                      <p>No opportunities found matching your criteria.</p>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => {
-                          setSearch('');
-                          setSelectedTag(null);
-                          setWorkTypeFilter('all');
-                          setStipendFilter('all');
-                        }}
-                      >
-                        Clear Filters
-                      </button>
+                      <p>No opportunities found with 70%+ skills match.</p>
+                      <p style={{ fontSize: '0.9em', color: '#666', marginTop: '0.5em' }}>
+                        Update your skills in Profile to see more matches!
+                      </p>
                     </motion.div>
                   ) : (
-                    filteredOpportunities.map((opp, index) => (
-                      <OpportunityCard
-                        key={opp.id}
-                        opportunity={opp}
-                        onApply={handleApply}
-                        index={index}
-                      />
-                    ))
+                    matchedOpportunities
+                      .filter((opp) => {
+                        // Apply filters
+                        if (search) {
+                          const searchLower = search.toLowerCase();
+                          if (
+                            !opp.title?.toLowerCase().includes(searchLower) &&
+                            !opp.company_name?.toLowerCase().includes(searchLower)
+                          ) {
+                            return false;
+                          }
+                        }
+                        return true;
+                      })
+                      .sort((a, b) => {
+                        if (sortBy === 'match') {
+                          return (b.match_data?.match_percentage || 0) - (a.match_data?.match_percentage || 0);
+                        }
+                        return 0;
+                      })
+                      .map((opp, index) => (
+                        <MatchedOpportunityCard
+                          key={opp.id}
+                          opportunity={opp}
+                          onApply={handleApply}
+                          index={index}
+                        />
+                      ))
                   )}
                 </motion.div>
               </AnimatePresence>
+            </>
+          )}
+
+          {activeTab === 'external-jobs' && (
+            <>
+              <motion.div
+                className="matched-opportunities-header"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <p className="match-info">
+                  🌐 External jobs from web (LinkedIn, Indeed, etc.) - <strong>70%+ skills match</strong>
+                </p>
+              </motion.div>
+
+              {loadingExternalJobs ? (
+                <div className="opportunities-loading">
+                  <motion.div
+                    className="spinner"
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  />
+                  <p>Loading external jobs...</p>
+                </div>
+              ) : (
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key="external-jobs-list"
+                    className="opportunities-list"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    {externalJobs.length === 0 ? (
+                      <motion.div
+                        className="empty-state"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                      >
+                        <p>No external jobs found with 70%+ skills match.</p>
+                        <p style={{ fontSize: '0.9em', color: '#666', marginTop: '0.5em' }}>
+                          External jobs are fetched from web APIs. Check back later!
+                        </p>
+                      </motion.div>
+                    ) : (
+                      externalJobs.map((job, index) => (
+                        <ExternalJobCard
+                          key={job.id}
+                          job={job}
+                          index={index}
+                        />
+                      ))
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              )}
             </>
           )}
 
@@ -378,12 +432,17 @@ const Opportunities: React.FC = () => {
   );
 };
 
-// Opportunity Card Component
-const OpportunityCard: React.FC<{
-  opportunity: JobOpportunityCard;
-  onApply: (opp: JobOpportunityCard) => void;
+// Matched Opportunity Card Component (with match details)
+const MatchedOpportunityCard: React.FC<{
+  opportunity: any;
+  onApply: (opp: any) => void;
   index: number;
 }> = ({ opportunity, onApply, index }) => {
+  const matchData = opportunity.match_data || {};
+  const matchPercent = matchData.match_percentage || 0;
+  const matchedSkills = matchData.matched_skills || [];
+  const missingSkills = matchData.missing_skills || [];
+
   return (
     <motion.div
       className="opportunity-card"
@@ -395,15 +454,38 @@ const OpportunityCard: React.FC<{
       <div className="opportunity-card-header">
         <div>
           <h3>{opportunity.title}</h3>
-          <p className="company-name">{opportunity.company || 'Company'}</p>
+          <p className="company-name">{opportunity.company_name || opportunity.company || 'Company'}</p>
         </div>
-        {opportunity.applied ? (
-          <span className="badge badge-success">
-            <FiCheckCircle size={14} />
-            Applied
+        <div className="match-badge-container">
+          <span className={`badge badge-primary match-badge ${matchPercent >= 80 ? 'match-excellent' : matchPercent >= 70 ? 'match-good' : ''}`}>
+            {matchPercent.toFixed(1)}% Match
           </span>
-        ) : (
-          <span className="badge badge-primary">Match: {opportunity.match}%</span>
+        </div>
+      </div>
+
+      {/* Match Details */}
+      <div className="match-details-section">
+        <div className="matched-skills">
+          <strong>✅ Matched Skills:</strong>
+          <div className="skills-list">
+            {matchedSkills.length > 0 ? (
+              matchedSkills.map((skill: string) => (
+                <span key={skill} className="tag tag-success">{skill}</span>
+              ))
+            ) : (
+              <span className="tag">None</span>
+            )}
+          </div>
+        </div>
+        {missingSkills.length > 0 && (
+          <div className="missing-skills">
+            <strong>❌ Missing Skills:</strong>
+            <div className="skills-list">
+              {missingSkills.map((skill: string) => (
+                <span key={skill} className="tag tag-warning">{skill}</span>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
@@ -414,46 +496,122 @@ const OpportunityCard: React.FC<{
         </span>
         <span>
           <FiDollarSign size={14} />
-          {opportunity.ctc || 'Not specified'}
+          {opportunity.stipend || 'Not specified'}
         </span>
         <span>
           <FiClock size={14} />
-          {opportunity.job_type || 'Full-time'}
+          {opportunity.work_type || 'Full-time'}
         </span>
-        {opportunity.posted_on && (
+        {opportunity.created_at && (
           <span>
-            Posted {new Date(opportunity.posted_on).toLocaleDateString()}
+            Posted {new Date(opportunity.created_at).toLocaleDateString()}
           </span>
-        )}
-      </div>
-
-      <div className="opportunity-card-tags">
-        {opportunity.tags.slice(0, 8).map((tag) => (
-          <span key={tag} className="tag tag-primary">
-            {tag}
-          </span>
-        ))}
-        {opportunity.tags.length > 8 && (
-          <span className="tag">+{opportunity.tags.length - 8} more</span>
         )}
       </div>
 
       <div className="opportunity-card-actions">
-        {opportunity.applied ? (
-          <span className="applied-badge">
-            <FiCheckCircle size={16} />
-            Application Submitted
-          </span>
-        ) : (
+        {matchPercent >= 70 ? (
           <motion.button
             className="btn btn-primary"
             onClick={() => onApply(opportunity)}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
-            Apply Now
+            Apply Now ({matchPercent.toFixed(0)}% Match)
           </motion.button>
+        ) : (
+          <span className="badge badge-warning">
+            Match too low to apply (Need 70%+)
+          </span>
         )}
+      </div>
+    </motion.div>
+  );
+};
+
+// External Job Card Component
+const ExternalJobCard: React.FC<{
+  job: any;
+  index: number;
+}> = ({ job, index }) => {
+  const matchData = job.match_data || {};
+  const matchPercent = matchData.match_percentage || 0;
+  const matchedSkills = matchData.matched_skills || [];
+  const missingSkills = matchData.missing_skills || [];
+
+  return (
+    <motion.div
+      className="opportunity-card external-job-card"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05 }}
+      whileHover={{ y: -4, boxShadow: 'var(--shadow-xl)' }}
+    >
+      <div className="opportunity-card-header">
+        <div>
+          <h3>{job.title}</h3>
+          <p className="company-name">{job.company_name || 'Company'}</p>
+          <span className="external-source-badge">Source: {job.source || 'External'}</span>
+        </div>
+        <div className="match-badge-container">
+          <span className={`badge badge-primary match-badge ${matchPercent >= 80 ? 'match-excellent' : matchPercent >= 70 ? 'match-good' : ''}`}>
+            {matchPercent.toFixed(1)}% Match
+          </span>
+        </div>
+      </div>
+
+      {/* Match Details */}
+      <div className="match-details-section">
+        <div className="matched-skills">
+          <strong>✅ Matched Skills:</strong>
+          <div className="skills-list">
+            {matchedSkills.length > 0 ? (
+              matchedSkills.map((skill: string) => (
+                <span key={skill} className="tag tag-success">{skill}</span>
+              ))
+            ) : (
+              <span className="tag">None</span>
+            )}
+          </div>
+        </div>
+        {missingSkills.length > 0 && (
+          <div className="missing-skills">
+            <strong>❌ Missing Skills:</strong>
+            <div className="skills-list">
+              {missingSkills.map((skill: string) => (
+                <span key={skill} className="tag tag-warning">{skill}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="opportunity-card-meta">
+        <span>
+          <FiMapPin size={14} />
+          {job.location || 'Remote'}
+        </span>
+        <span>
+          <FiDollarSign size={14} />
+          {job.salary_range || 'Not specified'}
+        </span>
+        <span>
+          <FiClock size={14} />
+          {job.job_type || 'Full-time'}
+        </span>
+      </div>
+
+      <div className="opportunity-card-actions">
+        <motion.a
+          href={job.application_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-primary"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          Apply on {job.source || 'External Site'} ({matchPercent.toFixed(0)}% Match)
+        </motion.a>
       </div>
     </motion.div>
   );

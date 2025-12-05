@@ -93,5 +93,36 @@ export const studentService = {
     const response = await api.get('/student/jobs/summary');
     return response.data;
   },
+
+  // Skills Matching Endpoints
+  getSkills: async () => {
+    const response = await api.get('/student/skills');
+    return response.data;
+  },
+
+  updateSkills: async (skills: { technical_skills?: string[]; non_technical_skills?: string[]; proficiency_levels?: Record<string, string> }) => {
+    const response = await api.post('/student/skills', skills);
+    return response.data;
+  },
+
+  getMatchedOpportunities: async (minMatch: number = 70) => {
+    const response = await api.get(`/student/matched-opportunities?min_match=${minMatch}`);
+    return response.data;
+  },
+
+  getExternalJobs: async (minMatch: number = 70) => {
+    const response = await api.get(`/student/external-jobs?min_match=${minMatch}`);
+    return response.data;
+  },
+
+  checkSkillsSetup: async () => {
+    const response = await api.get('/student/check-skills-setup');
+    return response.data;
+  },
+
+  getOpportunityMatch: async (opportunityId: number) => {
+    const response = await api.get(`/student/opportunities/${opportunityId}/match`);
+    return response.data;
+  },
 };
 

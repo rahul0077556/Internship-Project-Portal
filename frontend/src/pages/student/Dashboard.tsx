@@ -2,16 +2,33 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { studentService } from '../../services/studentService';
 import { Application, AIRecommendation } from '../../types';
+import SkillsSetupModal from '../../components/SkillsSetupModal';
 
 const StudentDashboard: React.FC = () => {
   const [dashboard, setDashboard] = useState<any>(null);
   const [recommendations, setRecommendations] = useState<AIRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showSkillsModal, setShowSkillsModal] = useState(false);
 
   useEffect(() => {
     loadDashboard();
     loadRecommendations();
+    
+    // Check if user needs to set up skills (first-time login)
+    checkSkillsSetup();
   }, []);
+
+  const checkSkillsSetup = async () => {
+    try {
+      const data = await studentService.checkSkillsSetup();
+      if (data.needs_setup || sessionStorage.getItem('show_skills_setup') === 'true') {
+        setShowSkillsModal(true);
+        sessionStorage.removeItem('show_skills_setup');
+      }
+    } catch (error) {
+      console.error('Error checking skills setup:', error);
+    }
+  };
 
   const loadDashboard = async () => {
     try {
@@ -38,6 +55,14 @@ const StudentDashboard: React.FC = () => {
 
   return (
     <div>
+      <SkillsSetupModal
+        isOpen={showSkillsModal}
+        onClose={() => setShowSkillsModal(false)}
+        onComplete={() => {
+          setShowSkillsModal(false);
+          loadDashboard(); // Reload to refresh stats
+        }}
+      />
       <h1>Student Dashboard</h1>
       
       {/* Stats */}

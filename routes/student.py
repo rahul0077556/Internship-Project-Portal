@@ -22,6 +22,8 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 from io import BytesIO
 from fpdf import FPDF
+from resume_extraction_service import extract_resume_data
+from apify_jobs_service import fetch_jobs_from_apify
 import os
 import json
 from routes.helpers import get_user_id
@@ -182,7 +184,35 @@ def get_profile():
     profile, error_response, status = get_student_profile()
     if error_response:
         return error_response, status
-    return jsonify(profile.to_dict()), 200
+    
+    profile_dict = profile.to_dict()
+    
+    # Get skills from StudentSkill table (technical and non-technical)
+    student_skills = StudentSkill.query.filter_by(student_id=profile.id).all()
+    technical_skills = []
+    non_technical_skills = []
+    
+    for ss in student_skills:
+        skill = Skill.query.get(ss.skill_id)
+        if skill:
+            skill_data = {
+                'id': skill.id,
+                'name': skill.name,
+                'category': skill.category,
+                'proficiency_level': ss.proficiency_level,
+                'years_of_experience': ss.years_of_experience
+            }
+            # Categorize as technical or non-technical based on category
+            if skill.category in ['programming', 'framework', 'database', 'cloud', 'devops', 'mobile', 'data-science', 'web', 'library']:
+                technical_skills.append(skill_data)
+            else:
+                non_technical_skills.append(skill_data)
+    
+    profile_dict['technical_skills'] = technical_skills
+    profile_dict['non_technical_skills'] = non_technical_skills
+    profile_dict['has_skills'] = len(student_skills) > 0  # Check if skills are set
+    
+    return jsonify(profile_dict), 200
 
 @student_bp.route('/profile/full', methods=['GET'])
 @jwt_required()
@@ -236,6 +266,32 @@ def update_profile():
             profile.education = json.dumps(data['education'])
         if 'skills' in data:
             profile.skills = json.dumps(data['skills'])
+        if 'technical_skills' in data or 'non_technical_skills' in data:
+            # Update skills from the new skills section
+            technical_skills = data.get('technical_skills', [])
+            non_technical_skills = data.get('non_technical_skills', [])
+            
+            # Combine all skill names
+            all_skill_names = []
+            proficiency_levels = {}
+            
+            for skill_data in technical_skills + non_technical_skills:
+                if isinstance(skill_data, dict):
+                    skill_name = skill_data.get('name') or skill_data.get('skill')
+                    if skill_name:
+                        all_skill_names.append(skill_name)
+                        if 'proficiency_level' in skill_data:
+                            proficiency_levels[skill_name] = skill_data['proficiency_level']
+                elif isinstance(skill_data, str):
+                    all_skill_names.append(skill_data)
+            
+            # Update skills using SkillsMatchingService
+            if all_skill_names:
+                SkillsMatchingService.update_student_skills(
+                    profile.id,
+                    all_skill_names,
+                    proficiency_levels
+                )
         if 'interests' in data:
             profile.interests = json.dumps(data['interests'])
         if 'bio' in data:
@@ -924,6 +980,10 @@ def upload_resume():
         
         filename = secure_filename(f"{profile.user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}")
 
+        # Read bytes once for parsing, then reset pointer
+        file_bytes = file.read()
+        file.stream.seek(0)
+
         # Prefer Supabase Storage if configured
         resume_url = None
         if is_supabase_configured():
@@ -947,8 +1007,36 @@ def upload_resume():
         
         profile.resume_path = resume_url
         db.session.commit()
+
+        # --------- Resume parsing + skills + external jobs ----------
+        parsed = {}
+        keywords = []
+        external_jobs = []
+        try:
+            parsed = extract_resume_data(file_bytes, file.filename)
+            keywords = parsed.get('keywords', []) or parsed.get('skills', [])
+
+            # Update skills from resume keywords (merge)
+            if keywords:
+                SkillsMatchingService.update_student_skills(profile.id, keywords)
+
+            # Fetch external jobs via Apify using keywords
+            try:
+                external_jobs = fetch_jobs_from_apify(keywords, location="India")
+            except Exception as apify_err:
+                # Don't fail upload; just log
+                print(f"[Apify] fetch failed: {apify_err}")
+        except Exception as parse_err:
+            # Parsing shouldn't block resume upload
+            print(f"[Resume Parse] failed: {parse_err}")
         
-        return jsonify({'message': 'Resume uploaded successfully', 'resume_path': resume_url}), 200
+        return jsonify({
+            'message': 'Resume uploaded successfully',
+            'resume_path': resume_url,
+            'parsed_resume': parsed,
+            'keywords': keywords,
+            'external_jobs': external_jobs
+        }), 200
     
     except Exception as e:
         db.session.rollback()
@@ -1286,4 +1374,241 @@ def check_files_status():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ==================== SKILLS MATCHING ENDPOINTS ====================
+
+@student_bp.route('/skills', methods=['GET', 'POST', 'PUT'])
+@jwt_required()
+def manage_skills():
+    """Get, add, or update student skills (Technical and Non-Technical)"""
+    profile, error_response, status = get_student_profile()
+    if error_response:
+        return error_response, status
+    
+    if request.method == 'GET':
+        # Get all skills with student's skills marked
+        all_skills = Skill.query.order_by(Skill.name).all()
+        student_skill_ids = {ss.skill_id for ss in StudentSkill.query.filter_by(student_id=profile.id).all()}
+        
+        skills_list = []
+        for skill in all_skills:
+            skill_dict = skill.to_dict()
+            skill_dict['has_skill'] = skill.id in student_skill_ids
+            if skill.id in student_skill_ids:
+                student_skill = StudentSkill.query.filter_by(
+                    student_id=profile.id, 
+                    skill_id=skill.id
+                ).first()
+                skill_dict['proficiency_level'] = student_skill.proficiency_level if student_skill else None
+            skills_list.append(skill_dict)
+        
+        # Get student's current skills (separated by technical/non-technical)
+        student_skills = StudentSkill.query.filter_by(student_id=profile.id).all()
+        technical_skills = []
+        non_technical_skills = []
+        
+        for ss in student_skills:
+            skill = Skill.query.get(ss.skill_id)
+            if skill:
+                skill_data = ss.to_dict()
+                skill_data['category'] = skill.category
+                if skill.category in ['programming', 'framework', 'database', 'cloud', 'devops', 'mobile', 'data-science', 'web', 'library']:
+                    technical_skills.append(skill_data)
+                else:
+                    non_technical_skills.append(skill_data)
+        
+        return jsonify({
+            'all_skills': skills_list,
+            'technical_skills': technical_skills,
+            'non_technical_skills': non_technical_skills
+        }), 200
+    
+    elif request.method == 'POST' or request.method == 'PUT':
+        # Update student skills
+        data = request.get_json() or {}
+        technical_skills = data.get('technical_skills', [])
+        non_technical_skills = data.get('non_technical_skills', [])
+        proficiency_levels = data.get('proficiency_levels', {})
+        
+        # Combine all skills
+        all_skill_names = []
+        for skill_data in technical_skills + non_technical_skills:
+            if isinstance(skill_data, dict):
+                skill_name = skill_data.get('name') or skill_data.get('skill')
+                if skill_name:
+                    all_skill_names.append(skill_name)
+                    if 'proficiency_level' in skill_data:
+                        proficiency_levels[skill_name] = skill_data['proficiency_level']
+            elif isinstance(skill_data, str):
+                all_skill_names.append(skill_data)
+        
+        if not all_skill_names:
+            return jsonify({'error': 'Skills list is required'}), 400
+        
+        try:
+            SkillsMatchingService.update_student_skills(
+                profile.id, 
+                all_skill_names,
+                proficiency_levels
+            )
+            
+            # Return updated skills
+            student_skills = StudentSkill.query.filter_by(student_id=profile.id).all()
+            technical = []
+            non_technical = []
+            
+            for ss in student_skills:
+                skill = Skill.query.get(ss.skill_id)
+                if skill:
+                    skill_data = ss.to_dict()
+                    skill_data['category'] = skill.category
+                    if skill.category in ['programming', 'framework', 'database', 'cloud', 'devops', 'mobile', 'data-science', 'web', 'library']:
+                        technical.append(skill_data)
+                    else:
+                        non_technical.append(skill_data)
+            
+            return jsonify({
+                'message': 'Skills updated successfully',
+                'technical_skills': technical,
+                'non_technical_skills': non_technical
+            }), 200
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+
+
+@student_bp.route('/matched-opportunities', methods=['GET'])
+@jwt_required()
+def get_matched_opportunities():
+    """Get opportunities matched with student's skills (70%+ match only - eligible to apply)"""
+    profile, error_response, status = get_student_profile()
+    if error_response:
+        return error_response, status
+    
+    try:
+        # Default to 70% minimum match as per requirement
+        min_match = float(request.args.get('min_match', 70.0))
+        limit = int(request.args.get('limit', 50))
+        
+        matched_opps = SkillsMatchingService.get_matched_opportunities(
+            profile.id,
+            limit=limit,
+            min_match=min_match
+        )
+        
+        # Filter to only show jobs with 70%+ match (can apply)
+        applicable_jobs = [
+            opp for opp in matched_opps 
+            if opp['match_data']['match_percentage'] >= 70.0
+        ]
+        
+        return jsonify({
+            'matched_opportunities': applicable_jobs,
+            'total': len(applicable_jobs),
+            'min_match_threshold': 70.0,
+            'message': 'Showing only jobs with 70%+ match (eligible to apply)'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@student_bp.route('/external-jobs', methods=['GET'])
+@jwt_required()
+def get_external_jobs():
+    """Get external jobs matched with student's skills (70%+ match only) - New Tab for External Jobs"""
+    profile, error_response, status = get_student_profile()
+    if error_response:
+        return error_response, status
+    
+    try:
+        # Default to 70% minimum match
+        min_match = float(request.args.get('min_match', 70.0))
+        limit = int(request.args.get('limit', 50))
+        
+        matched_jobs = SkillsMatchingService.get_matched_external_jobs(
+            profile.id,
+            limit=limit,
+            min_match=min_match
+        )
+        
+        # Filter to only show jobs with 70%+ match
+        applicable_jobs = [
+            job for job in matched_jobs 
+            if job['match_data']['match_percentage'] >= 70.0
+        ]
+        
+        return jsonify({
+            'external_jobs': applicable_jobs,
+            'total': len(applicable_jobs),
+            'min_match_threshold': 70.0,
+            'message': 'Showing only external jobs with 70%+ match'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@student_bp.route('/opportunities/<int:opportunity_id>/match', methods=['GET'])
+@jwt_required()
+def get_opportunity_match(opportunity_id):
+    """Get match details for a specific opportunity"""
+    profile, error_response, status = get_student_profile()
+    if error_response:
+        return error_response, status
+    
+    try:
+        opportunity = Opportunity.query.get_or_404(opportunity_id)
+        match_data = SkillsMatchingService.calculate_match_score(profile.id, opportunity_id)
+        
+        return jsonify({
+            'opportunity': opportunity.to_dict(),
+            'match_data': match_data,
+            'can_apply': match_data['match_percentage'] >= 70.0
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@student_bp.route('/external-jobs/<int:job_id>/match', methods=['GET'])
+@jwt_required()
+def get_external_job_match(job_id):
+    """Get match details for a specific external job"""
+    profile, error_response, status = get_student_profile()
+    if error_response:
+        return error_response, status
+    
+    try:
+        job = ExternalJob.query.get_or_404(job_id)
+        match_data = SkillsMatchingService.calculate_external_job_match(profile.id, job_id)
+        
+        return jsonify({
+            'job': job.to_dict(),
+            'match_data': match_data,
+            'can_apply': match_data['match_percentage'] >= 70.0
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@student_bp.route('/check-skills-setup', methods=['GET'])
+@jwt_required()
+def check_skills_setup():
+    """Check if student needs to set up skills (first-time login)"""
+    profile, error_response, status = get_student_profile()
+    if error_response:
+        return error_response, status
+    
+    skill_count = StudentSkill.query.filter_by(student_id=profile.id).count()
+    
+    return jsonify({
+        'has_skills': skill_count > 0,
+        'skill_count': skill_count,
+        'needs_setup': skill_count == 0,
+        'message': 'Please add your skills to get matched with opportunities' if skill_count == 0 else 'Skills are set up'
+    }), 200
 

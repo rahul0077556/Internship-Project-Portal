@@ -127,16 +127,53 @@ def login():
         
         # Get profile
         profile = None
+        needs_skills_setup = False
+        
         if user.role == 'student':
             profile = user.student_profile
+            if profile:
+                # Check if student has skills set up (first-time login check)
+                from models import StudentSkill
+                skill_count = StudentSkill.query.filter_by(student_id=profile.id).count()
+                needs_skills_setup = skill_count == 0
+        
         elif user.role in ['company', 'faculty']:
             profile = user.company_profile
+        
+        profile_dict = profile.to_dict() if profile else None
+        
+        # Add skills info for students
+        if user.role == 'student' and profile:
+            from models import StudentSkill, Skill
+            student_skills = StudentSkill.query.filter_by(student_id=profile.id).all()
+            technical_skills = []
+            non_technical_skills = []
+            
+            for ss in student_skills:
+                skill = Skill.query.get(ss.skill_id)
+                if skill:
+                    skill_data = {
+                        'id': skill.id,
+                        'name': skill.name,
+                        'category': skill.category,
+                        'proficiency_level': ss.proficiency_level
+                    }
+                    if skill.category in ['programming', 'framework', 'database', 'cloud', 'devops', 'mobile', 'data-science', 'web', 'library']:
+                        technical_skills.append(skill_data)
+                    else:
+                        non_technical_skills.append(skill_data)
+            
+            if profile_dict:
+                profile_dict['technical_skills'] = technical_skills
+                profile_dict['non_technical_skills'] = non_technical_skills
+                profile_dict['has_skills'] = len(student_skills) > 0
         
         return jsonify({
             'message': 'Login successful',
             'token': token,
             'user': user.to_dict(),
-            'profile': profile.to_dict() if profile else None
+            'profile': profile_dict,
+            'needs_skills_setup': needs_skills_setup  # First-time login flag
         }), 200
     
     except Exception as e:

@@ -532,3 +532,95 @@
   }
 }
 
+/* Match Details Styles */
+.matched-opportunities-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.match-info {
+  margin: 0;
+  font-size: 0.95em;
+}
+
+.match-badge-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.match-badge {
+  font-size: 0.9em;
+  font-weight: 600;
+  padding: 0.4rem 0.8rem;
+}
+
+.match-badge.match-excellent {
+  background: #10b981;
+  color: white;
+}
+
+.match-badge.match-good {
+  background: #3b82f6;
+  color: white;
+}
+
+.match-details-section {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 6px;
+  margin: 1rem 0;
+  border-left: 3px solid #667eea;
+}
+
+.matched-skills,
+.missing-skills {
+  margin-bottom: 0.75rem;
+}
+
+.matched-skills:last-child,
+.missing-skills:last-child {
+  margin-bottom: 0;
+}
+
+.matched-skills strong,
+.missing-skills strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.9em;
+  color: #374151;
+}
+
+.skills-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tag-success {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #10b981;
+}
+
+.tag-warning {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+}
+
+.external-job-card {
+  border-left: 4px solid #8b5cf6;
+}
+
+.external-source-badge {
+  font-size: 0.75em;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  display: inline-block;
+}
+

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { FiMail, FiLock, FiSun, FiMoon, FiLoader } from 'react-icons/fi';
+import { authService } from '../services/authService';
 import './Login.css';
 
 const Login: React.FC = () => {
@@ -21,7 +22,15 @@ const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      await login(email, password);
+      // Call login service directly to get full response
+      const response = await authService.login(email, password);
+      await login(email, password); // Also update auth context
+      
+      // Check if student needs to set up skills
+      if (response?.needs_skills_setup) {
+        // Store flag to show modal in Dashboard
+        sessionStorage.setItem('show_skills_setup', 'true');
+      }
       navigate('/dashboard');
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || 'Login failed. Please check your credentials.';

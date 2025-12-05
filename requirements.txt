@@ -19,4 +19,6 @@ psycopg2-binary==2.9.9
 supabase>=2.24.0
 httpx>=0.28.0
 websockets>=15.0.0
+openai>=1.47.0
+apify-client>=1.7.2
 
