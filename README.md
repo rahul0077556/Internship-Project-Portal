@@ -3,6 +3,13 @@
 A full-stack web application that connects students, companies, and faculty through an intelligent internship lifecycle platform — with AI-driven features for matching, resume parsing, and opportunity recommendations.
 
 ---
+<img width="1600" height="1000" alt="IMG-20251202-WA0021" src="https://github.com/user-attachments/assets/249e21ee-fd82-4425-a017-655573ec674c" />
+<img width="1600" height="1000" alt="IMG-20251202-WA0022" src="https://github.com/user-attachments/assets/524c446b-c951-4e06-b764-e027332d9fb6" />
+<img width="1600" height="1000" alt="IMG-20251205-WA0028" src="https://github.com/user-attachments/assets/29f1589c-f577-4e95-8529-d26cf6c63354" />
+<img width="1600" height="1000" alt="IMG-20251205-WA0027" src="https://github.com/user-attachments/assets/cf96311b-1947-4d5e-b7c1-81d2ffb14e22" />
+<img width="1600" height="1000" alt="IMG-20251202-WA0023" src="https://github.com/user-attachments/assets/b9987bfe-823c-4542-9c84-add64a8554e7" />
+
+
 
 ## Features
 
